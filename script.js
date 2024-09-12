@@ -6,46 +6,68 @@ document.addEventListener('DOMContentLoaded', () => {
     let floors, lifts, liftStates;
 
     function initializeLiftStates(numLifts) {
-        return Array(numLifts).fill().map(() => ({
+        return Array(numLifts).fill().map((_, index) => ({
+            id: index,
             currentFloor: 0,
             targetFloors: [],
             isMoving: false,
-            doorsOpen: false
+            doorsOpen: false,
+            direction: 'idle' // 'up', 'down', or 'idle'
         }));
     }
 
-    function findNearestAvailableLift(floorNumber) {
+    function findNearestAvailableLift(floorNumber, direction) {
         let nearestLift = -1;
         let minDistance = Infinity;
 
+        // Special case for first and last floors
+        if (floorNumber === 0 || floorNumber === floors - 1) {
+            return findAnyNearestLift(floorNumber);
+        }
+
+        // Find the nearest available lift going in the same direction
         for (let i = 0; i < lifts; i++) {
             const lift = liftStates[i];
             const distance = Math.abs(lift.currentFloor - floorNumber);
             if (!lift.isMoving && !lift.doorsOpen && distance < minDistance) {
-                minDistance = distance;
-                nearestLift = i;
-            }
-        }
-
-        if (nearestLift === -1) {
-            for (let i = 0; i < lifts; i++) {
-                const lift = liftStates[i];
-                const distance = Math.abs(lift.currentFloor - floorNumber);
-                if (distance < minDistance) {
+                if ((direction === 'up' && i < lifts / 2) || (direction === 'down' && i >= lifts / 2)) {
                     minDistance = distance;
                     nearestLift = i;
                 }
             }
         }
 
+        // If no suitable lift found, find any available lift
+        if (nearestLift === -1) {
+            nearestLift = findAnyNearestLift(floorNumber);
+        }
+
         return nearestLift;
     }
 
-    function requestLift(floorNumber) {
-        const availableLift = findNearestAvailableLift(floorNumber);
+    function findAnyNearestLift(floorNumber) {
+        let nearestLift = -1;
+        let minDistance = Infinity;
+
+        for (let i = 0; i < lifts; i++) {
+            const lift = liftStates[i];
+            const distance = Math.abs(lift.currentFloor - floorNumber);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestLift = i;
+            }
+        }
+
+        return nearestLift;
+    }
+
+    function requestLift(floorNumber, direction) {
+        const availableLift = findNearestAvailableLift(floorNumber, direction);
         if (availableLift !== -1) {
-            liftStates[availableLift].targetFloors.push(floorNumber);
-            if (!liftStates[availableLift].isMoving) {
+            const lift = liftStates[availableLift];
+            lift.targetFloors.push(floorNumber);
+            lift.direction = direction;
+            if (!lift.isMoving) {
                 moveLift(availableLift);
             }
         }
@@ -103,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         lift.isMoving = false;
+        lift.direction = 'idle';
     }
 
     generateButton.addEventListener('click', () => {
@@ -134,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const upButton = document.createElement('button');
                 upButton.className = 'lift-button';
                 upButton.textContent = 'Up';
-                upButton.addEventListener('click', () => requestLift(i));
+                upButton.addEventListener('click', () => requestLift(i, 'up'));
                 liftButtons.appendChild(upButton);
             }
 
@@ -142,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const downButton = document.createElement('button');
                 downButton.className = 'lift-button';
                 downButton.textContent = 'Down';
-                downButton.addEventListener('click', () => requestLift(i));
+                downButton.addEventListener('click', () => requestLift(i, 'down'));
                 liftButtons.appendChild(downButton);
             }
 
