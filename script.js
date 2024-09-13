@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const liftsContainer = document.getElementById('lifts-container');
 
     let floors, lifts, liftStates;
+    let floorStates = {}; // New object to track floor states
 
     function initializeLiftStates(numLifts) {
         return Array(numLifts).fill().map((_, index) => ({
@@ -20,39 +21,10 @@ document.addEventListener('DOMContentLoaded', () => {
         let nearestLift = -1;
         let minDistance = Infinity;
 
-        // Special case for first and last floors
-        if (floorNumber === 0 || floorNumber === floors - 1) {
-            return findAnyNearestLift(floorNumber);
-        }
-
-        // Find the nearest available lift going in the same direction
         for (let i = 0; i < lifts; i++) {
             const lift = liftStates[i];
             const distance = Math.abs(lift.currentFloor - floorNumber);
             if (!lift.isMoving && !lift.doorsOpen && distance < minDistance) {
-                if ((direction === 'up' && i < lifts / 2) || (direction === 'down' && i >= lifts / 2)) {
-                    minDistance = distance;
-                    nearestLift = i;
-                }
-            }
-        }
-
-        // If no suitable lift found, find any available lift
-        if (nearestLift === -1) {
-            nearestLift = findAnyNearestLift(floorNumber);
-        }
-
-        return nearestLift;
-    }
-
-    function findAnyNearestLift(floorNumber) {
-        let nearestLift = -1;
-        let minDistance = Infinity;
-
-        for (let i = 0; i < lifts; i++) {
-            const lift = liftStates[i];
-            const distance = Math.abs(lift.currentFloor - floorNumber);
-            if (distance < minDistance) {
                 minDistance = distance;
                 nearestLift = i;
             }
@@ -62,13 +34,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function requestLift(floorNumber, direction) {
+        if (!floorStates[floorNumber]) {
+            floorStates[floorNumber] = { up: false, down: false };
+        }
+        
+        // Check if this direction has already called a lift
+        if (floorStates[floorNumber][direction]) {
+            console.log(`A lift has already been called for floor ${floorNumber} in the ${direction} direction.`);
+            return;
+        }
+
+        const liftsOnFloor = liftStates.filter(lift => 
+            lift.currentFloor === floorNumber || lift.targetFloors.includes(floorNumber)
+        ).length;
+
+        if (liftsOnFloor >= 2) {
+            console.log(`Maximum number of lifts (2) already called to floor ${floorNumber}`);
+            return;
+        }
+
         const availableLift = findNearestAvailableLift(floorNumber, direction);
         if (availableLift !== -1) {
             const lift = liftStates[availableLift];
-            lift.targetFloors.push(floorNumber);
-            lift.direction = direction;
-            if (!lift.isMoving) {
-                moveLift(availableLift);
+            if (!lift.targetFloors.includes(floorNumber)) {
+                lift.targetFloors.push(floorNumber);
+                lift.direction = direction;
+                floorStates[floorNumber][direction] = true; // Mark this direction as having called a lift
+                if (!lift.isMoving) {
+                    moveLift(availableLift);
+                }
             }
         }
     }
@@ -119,9 +113,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             await animateLiftMovement(liftIndex, targetFloor, moveTime);
             lift.currentFloor = targetFloor;
+
+            // Always open and close doors when arriving at a floor
+            await openCloseDoors(liftIndex);
+
             lift.targetFloors.shift();
 
-            await openCloseDoors(liftIndex);
+            // Reset floor state after servicing the floor
+            if (floorStates[targetFloor]) {
+                floorStates[targetFloor] = { up: false, down: false };
+            }
+
+            // Check if there are any pending requests on the current floor
+            if (floorStates[lift.currentFloor] && (floorStates[lift.currentFloor].up || floorStates[lift.currentFloor].down)) {
+                await openCloseDoors(liftIndex);
+                floorStates[lift.currentFloor] = { up: false, down: false };
+            }
         }
 
         lift.isMoving = false;
@@ -138,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         liftStates = initializeLiftStates(lifts);
+        floorStates = {}; // Reset floor states
         floorsContainer.innerHTML = '';
         liftsContainer.innerHTML = '';
 
